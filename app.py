@@ -12,113 +12,115 @@ from flask import Flask, jsonify, request
 # app -> es comun pero no obligacion
 app = Flask(__name__)
 
-# Encapsulacion. Todo lo relevante a manipular los datos de la clase
-# Debe vivir dentro de la clase
+class CustomError(Exception):
+    def __init__(self, status, msg):
+        super().__init__(self)
+        self.status = status
+        self.msg = msg
 
-# <Objt Estudiante#7411521>
-
-class Estudiante:
-    def __init__(self, nombre, id):
-        self.name = nombre
-        self.id = id
-
-    # Metodos
-    # Agregan a nivel del init
-
-    def update(self, name):
-        self.name = name
-
+class User:
+    # metodo constructor
+    def __init__(self, username, email, password):
+        self.username = username
+        self.email = email
+        self.password = password
+        
+    # Para enviar la informacion a un cliente 
     def serialize(self):
-        # Permitir que el objeto sea accesible
-        # Por cosas externas a la aplicaion
         return {
-            "name": self.name,
-            "id": self.id
+            "username": self.username,
+            "email": self.email,
         }
     
-estudiantes = []
+usuarios = []
 
 @app.route("/", methods=["GET"])
 def get_app():
-    return "Soy una API de flask"
+    # JSON: JavaScript Object Notation
+    return jsonify("El servidor esta corriendo")
 
-# CRUD Create Read Update Delete
-# Usuario: Crear, Ver, Modificar, Borrar
-# Post: Crear, Ver, Modificar y Borrar
-# Comentario: Crear, ver, modificar y borrar
-# Estudiantes:
-# Metodo Get -> Ver todos los estudiantes
-# Metodo Post -> Para crear un nuevo estudiante
-# Modo Get -> Para ver un estudiante
+# ENDPOINTS
+"""
+GET = Obtener datos
+POST = Crear algo nuevo / Para enviar informacion
+PUT = Editar algo que ya existe
+DELETE = Eliminar algo que ya existe
 
-@app.route("/estudiantes", methods=["GET"])
-def get_estudiantes():
-    estudiantes_serializados = list(map(lambda estudiante: estudiante.serialize(), estudiantes))
-    return jsonify({    
-        "estudiantes": estudiantes_serializados,
-        "cantidad": len(estudiantes)
-    })
+Crear una cuenta/Registro de usuario - POST
+Iniciar sesion - GET
+Obtener sus datos - GET
 
-# Metodo methods=["GET"] -> GET
-@app.route("/estudiante/<int:id>")
-def get_estudiante_by_id(id):
-    for estudiante in estudiantes:
-        if estudiante.id == id:
-            return jsonify(estudiante.serialize())
-        
-    # Retornamos un error 404 por defecto
-    return jsonify({
-        "error": "Estudiante no encontrado :("
-    }), 404
-
-@app.route("/estudiante", methods=["POST"])
-def crear_estudiante():
-    body = request.get_json()
-    name = body.get("name", None) # body["name"]
-    id = body.get("id", None) 
-
-    if id is None:
-        # BE -> FE
-        return jsonify({"error": "El id es requerido"}), 400
-    if name is None:
-        return jsonify({"error": "El name es requerido"}), 400
-
-    # Creamos una instancia de la clase
-    estudiante = Estudiante(name, id)
-
-    # Agregamos un estudiante a la lista de estudiantes
-    estudiantes.append(estudiante)
-
-    # Es que cuando creemos siempre retornemos estatus 201
-    return jsonify(estudiante.serialize()), 201
-
-@app.route("/estudiante/<int:id>", methods=["DELETE"])
-def delete_estudent(id):
-    for estudiante in estudiantes:
-        if estudiante.id == id:
-            estudiantes.remove(estudiante)
-            return jsonify({"msg": "Estudiante eliminado"}), 200
-    # Significa que no lo encontro
-    return jsonify({"error": "Estudiante not found"}), 404
-
-@app.route("/estudiante/<int:id>", methods=["PUT"])
-def update_estudent(id):
-    body = request.get_json()
-    name = body.get("name", None)
-
-    if name is None or name == "":
-        return jsonify({"error": "El name es requerido"}), 400
+Si un endpoint requiere mas de una palabra en su ruta:
+separamos-con-guiones
+"""
+# localhost:8000/ register / signup
+@app.route("/signup", methods=["POST"])
+def signup():
+    """
+    Creates an user account with email, username, password
+    """
+    request_body = request.get_json(force=True)
+    # Uno siempre deberia validar esa data
+    username = request_body.get("username", None)
+    email = request_body.get("email", None)
+    password = request_body.get("password", None)
     
-    # Encontrar al estudiante que quiero actualizar
-    # ejecutar el metodo update de ese estudiante
-    # Y retornarlo
+    # Es validacion de inputs
+    if username is None or username.strip() == "":
+        return jsonify({"error": "El username es requerido"}), 400
+    if email is None or email.strip() == "":
+        return jsonify({"error": "El email es requerido"}), 400
+    if password is None or password.strip() == "":
+        return jsonify({"error": "El password es requerido"}), 400
 
-    for estudiante in estudiantes:
-        if estudiante.id == id:
-            estudiante.update(name)
-            return jsonify(estudiante.serialize()), 200
+    # Validamos que son unicos
+    for usuario in usuarios:
+        if username == usuario.username:
+            return jsonify({"error": "El usuario ya esta uso"}), 400
+        if email == usuario.email:
+            return jsonify({"error": "El correo ya esta en uso"}), 400
+    
+    invalid_characters = ["%", ",", "<", ">"]
+    for character in invalid_characters:
+        if character in username:
+            return jsonify({"error": "Caracter invalido", "no_permitidos": invalid_characters}), 400
+
+    new_user = User(username, email, password)
+    usuarios.append(new_user)
+    return jsonify({"msg": "Se ha creado con exito"}), 201
+
+@app.route("/signin", methods=["POST"])
+def signin():
+    # Que creen que deberiamos hacer para recibir password y correo?
+    # intenta y atrapa / try and catch
+    try:
+        body_request = request.get_json(force=True)
+        email = body_request["email"]
+        password = body_request["password"]
+
+        for usuario in usuarios:
+            if usuario.email == email:
+                if usuario.password == password:
+                    return jsonify({"msg": "Bienvenido de vuelta"}), 200
+                else:
+                    raise CustomError(400, "Contrasenas deben ser iguales")
         
-    return jsonify({"error": "Estudiante no encontrado"}), 404
+        # throw new Error()
+        raise CustomError(404, "Usuario no encontrado")
+        
+    # Es sintaxis bastante comun en Python cuando se trata un error/excepcion
+    except Exception as error:
+        if isinstance(error, KeyError):
+            return jsonify({"error": f"{error.__str__()}: es requerido"}), 400
+        
+        # Rabbit hole
+        if isinstance(error, CustomError):
+            return jsonify({"error": error.msg}), error.status
+        
+        # 500 Internal server error
+        return jsonify({"error": error.__str__()}), 500
+
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0')
